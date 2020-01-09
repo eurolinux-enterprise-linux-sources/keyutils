@@ -1,0 +1,22 @@
+[PATCH] keyctl: Fix the input buffer size for padd and pinstantiate
+
+The add_key() and keyctl_instantiate() calls can take a buffer of up to 1MB,
+so grab_stdin() should be using a buffer capable of holding that rather than
+one limited to 64KB.
+
+RH-Bugzilla: 1075652
+Upstream-commit: http://git.kernel.org/cgit/linux/kernel/git/dhowells/keyutils.git/commit/?id=df5cab5362695b92896a41a86556e9dad156419d
+Signed-off-by: David Howells <dhowells@redhat.com>
+---
+diff -ur a/keyctl.c b/keyctl.c
+--- a/keyctl.c	2014-03-12 16:15:42.217353570 +0000
++++ b/keyctl.c	2014-03-12 16:16:06.718432504 +0000
+@@ -215,7 +215,7 @@
+  */
+ static char *grab_stdin(void)
+ {
+-	static char input[65536 + 1];
++	static char input[1024 * 1024 + 1];
+ 	int n, tmp;
+ 
+ 	n = 0;

@@ -1,0 +1,138 @@
+Subject: Fix the keyctl padd command and similar to handle binary data on stdin
+
+Fix the keyctl padd, pinstantiate and pupdate commands to not use strlen() on
+the data read from stdin as the data may be binary, but rather to have
+grab_stdin() return the amount of data read.
+
+RH-Bugzilla: 1075652
+Upstream-commit: http://git.kernel.org/cgit/linux/kernel/git/dhowells/keyutils.git/commit/?id=d4dea943947ffe91d3ba1fe05e84fa4c8f46fcdd
+Signed-off-by: David Howells <dhowells@redhat.com>
+---
+diff -ur a/keyctl.c b/keyctl.c
+--- a/keyctl.c	2014-03-12 16:16:06.718432504 +0000
++++ b/keyctl.c	2014-03-12 16:16:20.497476883 +0000
+@@ -213,7 +213,7 @@
+ /*
+  * grab data from stdin
+  */
+-static char *grab_stdin(void)
++static char *grab_stdin(size_t *_size)
+ {
+ 	static char input[1024 * 1024 + 1];
+ 	int n, tmp;
+@@ -237,6 +237,7 @@
+ 	}
+ 
+ 	input[n] = '\0';
++	*_size = n;
+ 
+ 	return input;
+ 
+@@ -332,19 +333,26 @@
+  */
+ static int act_keyctl_padd(int argc, char *argv[])
+ {
+-	char *args[6];
++	key_serial_t dest;
++	size_t datalen;
++	void *data;
++	int ret;
++
+ 
+ 	if (argc != 4)
+ 		format();
+ 
+-	args[0] = argv[0];
+-	args[1] = argv[1];
+-	args[2] = argv[2];
+-	args[3] = grab_stdin();
+-	args[4] = argv[3];
+-	args[5] = NULL;
++	dest = get_key_id(argv[3]);
++
++	data = grab_stdin(&datalen);
++
++	ret = add_key(argv[1], argv[2], data, datalen, dest);
++	if (ret < 0)
++		error("add_key");
+ 
+-	return act_keyctl_add(5, args);
++	/* print the resulting key ID */
++	printf("%d\n", ret);
++	return 0;
+ 
+ } /* end act_keyctl_padd() */
+ 
+@@ -408,6 +416,7 @@
+ static int act_keyctl_prequest2(int argc, char *argv[])
+ {
+ 	char *args[6];
++	size_t datalen;
+ 
+ 	if (argc != 3 && argc != 4)
+ 		format();
+@@ -415,7 +424,7 @@
+ 	args[0] = argv[0];
+ 	args[1] = argv[1];
+ 	args[2] = argv[2];
+-	args[3] = grab_stdin();
++	args[3] = grab_stdin(&datalen);
+ 	args[4] = argv[3];
+ 	args[5] = NULL;
+ 
+@@ -449,17 +458,20 @@
+  */
+ static int act_keyctl_pupdate(int argc, char *argv[])
+ {
+-	char *args[4];
++	key_serial_t key;
++	size_t datalen;
++	void *data;
+ 
+ 	if (argc != 2)
+ 		format();
+ 
+-	args[0] = argv[0];
+-	args[1] = argv[1];
+-	args[2] = grab_stdin();
+-	args[3] = NULL;
++	key = get_key_id(argv[1]);
++	data = grab_stdin(&datalen);
++
++	if (keyctl_update(key, data, datalen) < 0)
++		error("keyctl_update");
+ 
+-	return act_keyctl_update(3, args);
++	return 0;
+ 
+ } /* end act_keyctl_pupdate() */
+ 
+@@ -1105,18 +1117,21 @@
+  */
+ static int act_keyctl_pinstantiate(int argc, char *argv[])
+ {
+-	char *args[5];
++	key_serial_t key, dest;
++	size_t datalen;
++	void *data;
+ 
+ 	if (argc != 3)
+ 		format();
+ 
+-	args[0] = argv[0];
+-	args[1] = argv[1];
+-	args[2] = grab_stdin();
+-	args[3] = argv[2];
+-	args[4] = NULL;
++	key = get_key_id(argv[1]);
++	dest = get_key_id(argv[2]);
++	data = grab_stdin(&datalen);
++
++	if (keyctl_instantiate(key, data, datalen, dest) < 0)
++		error("keyctl_instantiate");
+ 
+-	return act_keyctl_instantiate(4, args);
++	return 0;
+ 
+ } /* end act_keyctl_pinstantiate() */
+ 

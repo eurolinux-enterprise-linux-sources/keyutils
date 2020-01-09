@@ -1,0 +1,22 @@
+[PATCH] keyctl: Fix max depth of key tree dump
+
+Fix the maximum depth of the key tree dump made my "keyctl show".  The depth
+increases in multiples of four because it is used to determine how many spaces
+to prefix each printed line with - and not multiples of one.
+
+RH-Bugzilla: 1075652
+Upstream-commit: http://git.kernel.org/cgit/linux/kernel/git/dhowells/keyutils.git/commit/?id=67e435c3f1810bc0902698ea4ac4a85b4aef7e4f
+Signed-off-by: David Howells <dhowells@redhat.com>
+---
+diff -ur a/keyctl.c b/keyctl.c
+--- a/keyctl.c	2010-02-26 20:31:05.000000000 +0000
++++ b/keyctl.c	2014-03-12 16:13:53.373002575 +0000
+@@ -1276,7 +1276,7 @@
+ 	char *desc, type[255], pretty_mask[9];
+ 	int uid, gid, ret, n, dpos, rdepth, kcount = 0;
+ 
+-	if (depth > 8)
++	if (depth > 8 * 4)
+ 		return 0;
+ 
+ 	/* find out how big this key's description is */

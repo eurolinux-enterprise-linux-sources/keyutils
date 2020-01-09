@@ -8,7 +8,7 @@
 Summary: Linux Key Management Utilities
 Name: keyutils
 Version: %{version}
-Release: 4%{?dist}
+Release: 5%{?dist}
 # The main package is GPLv2+ and -libs/-libs-devel are LGPLv2+
 License: GPLv2+ and LGPLv2+
 Group: System Environment/Base
@@ -17,6 +17,18 @@ Url: http://people.redhat.com/~dhowells/keyutils/
 
 Source0: http://people.redhat.com/~dhowells/keyutils/keyutils-%{version}.tar.bz2
 Patch1: keyutils-1.4-keytype-specific-file.patch
+
+# Fix max depth of key tree dump (67e435c3f1810bc0902698ea4ac4a85b4aef7e4f)
+Patch2: keyutils-1.4-keyctl-show.patch
+
+# Show more key serial ID digits in show command (part c2bba5a9f8f50b22f736ec262504229a719bcfce)
+Patch3: keyutils-1.4-keyctl-show-2.patch
+
+# Fix the input buffer size for padd and pinstantiate (df5cab5362695b92896a41a86556e9dad156419d)
+Patch4: keyutils-1.4-keyctl-padd.patch
+
+# Fix the keyctl padd command and similar to handle binary data on stdin (d4dea943947ffe91d3ba1fe05e84fa4c8f46fcdd)
+Patch5: keyutils-1.4-keyctl-padd-2.patch
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glibc-kernheaders >= 2.4-9.1.92
@@ -46,6 +58,10 @@ This package provides headers and libraries for building key utilities.
 %prep
 %setup -q
 %patch1 -p1
+%patch2 -p1
+%patch3 -p1
+%patch4 -p1
+%patch5 -p1
 
 %build
 make \
@@ -95,6 +111,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/*
 
 %changelog
+* Wed Mar 12 2014 David Howells  <dhowells@redhat.com> - 1.4-5
+- Make keyctl show handle deeply nested keyrings [BZ 1075652].
+- The key serial ID field displayed by keyctl show may be up to 10 digits [BZ 1075652].
+- Make keyctl padd & co. handle binary data containing NUL chars [BZ 1075652].
+- The input buffer for keyctl padd & co. should be 1MB-1 in size [BZ 1075652].
+
 * Fri Feb 3 2012 David Howells  <dhowells@redhat.com> - 1.4-4
 - Allow /sbin/request-key to have multiple config files [BZ 772497].
 
@@ -188,15 +210,15 @@ rm -rf $RPM_BUILD_ROOT
 * Wed Jul 20 2005 David Howells <dhowells@redhat.com> - 0.2-2
 - Bump version to permit building in main repositories.
 
-* Mon Jul 12 2005 David Howells <dhowells@redhat.com> - 0.2-1
+* Tue Jul 12 2005 David Howells <dhowells@redhat.com> - 0.2-1
 - Don't attempt to define the error codes in the header file.
 - Pass the release ID through to the makefile to affect the shared library name.
 
-* Mon Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-3
+* Tue Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-3
 - Build in the perror() override to get the key error strings displayed.
 
-* Mon Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-2
+* Tue Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-2
 - Need a defattr directive after each files directive.
 
-* Mon Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-1
+* Tue Jul 12 2005 David Howells <dhowells@redhat.com> - 0.1-1
 - Package creation.

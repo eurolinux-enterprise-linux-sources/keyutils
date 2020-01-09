@@ -1,0 +1,25 @@
+[PATCH] keyctl: Show more key serial ID digits in show command
+
+Make a fixes to the show subcommand:
+
+ (*) 31-bit decimal numbers can be up to 10 chars long, so allow for an extra
+     char in the serial number when displaying it.
+
+This is a partial backport of an upstream commit (ID below).
+
+RH-Bugzilla: 1075652
+Upstream-commit: http://git.kernel.org/cgit/linux/kernel/git/dhowells/keyutils.git/commit/?id=c2bba5a9f8f50b22f736ec262504229a719bcfce
+Signed-off-by: David Howells <dhowells@redhat.com>
+---
+diff -ur a/keyctl.c b/keyctl.c
+--- a/keyctl.c	2014-03-12 16:13:53.373002575 +0000
++++ b/keyctl.c	2014-03-12 16:15:42.217353570 +0000
+@@ -1320,7 +1320,7 @@
+ 	/* and print */
+ 	calc_perms(pretty_mask, perm, uid, gid);
+ 
+-	printf("%9d %s  %5d %5d  %s%s%s: %s\n",
++	printf("%10d %s  %5d %5d  %s%s%s: %s\n",
+ 	       key,
+ 	       pretty_mask,
+ 	       uid, gid,
