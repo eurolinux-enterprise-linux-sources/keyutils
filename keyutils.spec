@@ -8,7 +8,7 @@
 Summary: Linux Key Management Utilities
 Name: keyutils
 Version: %{version}
-Release: 1%{?dist}
+Release: 3%{?dist}
 # The main package is GPLv2+ and -libs/-libs-devel are LGPLv2+
 License: GPLv2+ and LGPLv2+
 Group: System Environment/Base
@@ -19,6 +19,7 @@ Source0: http://people.redhat.com/~dhowells/keyutils/keyutils-%{version}.tar.bz2
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glibc-kernheaders >= 2.4-9.1.92
+Requires: keyutils-libs == %{version}-%{release}
 
 %description
 Utilities to control the kernel key management facility and to provide
@@ -51,7 +52,7 @@ make \
 	USRLIBDIR=%{usrlibdir} \
 	RELEASE=.%{release} \
 	NO_GLIBC_KEYERR=1 \
-	CFLAGS="-Wall $RPM_OPT_FLAGS"
+	CFLAGS="-Wall $RPM_OPT_FLAGS -Wl,-z,relro"
 
 %install
 rm -rf $RPM_BUILD_ROOT
@@ -92,6 +93,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/*
 
 %changelog
+* Thu Aug 11 2011 David Howells  <dhowells@redhat.com> - 1.4-3
+- Make the keyutils rpm depend on the same keyutils-libs rpm version [BZ 730002].
+
+* Tue Aug 9 2011 David Howells  <dhowells@redhat.com> - 1.4-2
+- Pass -Wl,-z,relro to the linker as a security enhancement [BZ 727280].
+
 * Fri Mar 19 2010 David Howells  <dhowells@redhat.com> - 1.4-1
 - Fix the library naming wrt the version.
 - Move the package to version to 1.4.
