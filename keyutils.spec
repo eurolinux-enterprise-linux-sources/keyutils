@@ -8,7 +8,7 @@
 Summary: Linux Key Management Utilities
 Name: keyutils
 Version: %{version}
-Release: 3%{?dist}
+Release: 4%{?dist}
 # The main package is GPLv2+ and -libs/-libs-devel are LGPLv2+
 License: GPLv2+ and LGPLv2+
 Group: System Environment/Base
@@ -16,6 +16,7 @@ ExclusiveOS: Linux
 Url: http://people.redhat.com/~dhowells/keyutils/
 
 Source0: http://people.redhat.com/~dhowells/keyutils/keyutils-%{version}.tar.bz2
+Patch1: keyutils-1.4-keytype-specific-file.patch
 
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: glibc-kernheaders >= 2.4-9.1.92
@@ -44,6 +45,7 @@ This package provides headers and libraries for building key utilities.
 
 %prep
 %setup -q
+%patch1 -p1
 
 %build
 make \
@@ -93,6 +95,9 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/*
 
 %changelog
+* Fri Feb 3 2012 David Howells  <dhowells@redhat.com> - 1.4-4
+- Allow /sbin/request-key to have multiple config files [BZ 772497].
+
 * Thu Aug 11 2011 David Howells  <dhowells@redhat.com> - 1.4-3
 - Make the keyutils rpm depend on the same keyutils-libs rpm version [BZ 730002].
 

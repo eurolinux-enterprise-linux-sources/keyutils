@@ -1,0 +1,303 @@
+diff -up keyutils-1.4/keyutils.spec.orig keyutils-1.4/keyutils.spec
+--- keyutils-1.4/keyutils.spec.orig	2010-03-19 11:46:13.000000000 -0400
++++ keyutils-1.4/keyutils.spec	2012-01-10 11:15:17.234484000 -0500
+@@ -91,6 +91,9 @@ rm -rf $RPM_BUILD_ROOT
+ %{_mandir}/man3/*
+ 
+ %changelog
++* Tue Nov 15 2011 David Howells  <dhowells@redhat.com>
++- Allow /sbin/request-key to have multiple config files.
++
+ * Fri Mar 19 2010 David Howells  <dhowells@redhat.com> - 1.4-1
+ - Fix the library naming wrt the version.
+ - Move the package to version to 1.4.
+diff -up keyutils-1.4/Makefile.orig keyutils-1.4/Makefile
+--- keyutils-1.4/Makefile.orig	2010-03-19 11:46:13.000000000 -0400
++++ keyutils-1.4/Makefile	2012-01-10 11:15:47.570381000 -0500
+@@ -96,6 +96,7 @@ endif
+ 	$(INSTALL) -D request-key $(DESTDIR)$(SBINDIR)/request-key
+ 	$(INSTALL) -D request-key-debug.sh $(DESTDIR)$(SHAREDIR)/request-key-debug.sh
+ 	$(INSTALL) -D -m 0644 request-key.conf $(DESTDIR)$(ETCDIR)/request-key.conf
++	mkdir -p $(DESTDIR)$(ETCDIR)/request-key.d
+ 	$(INSTALL) -D -m 0644 keyctl.1 $(MAN1)/keyctl.1
+ 	$(INSTALL) -D -m 0644 keyctl_chown.3 $(MAN3)/keyctl_chown.3
+ 	$(INSTALL) -D -m 0644 keyctl_clear.3 $(MAN3)/keyctl_clear.3
+diff -up keyutils-1.4/request-key.8.orig keyutils-1.4/request-key.8
+--- keyutils-1.4/request-key.8.orig	2010-02-26 07:16:53.000000000 -0500
++++ keyutils-1.4/request-key.8	2012-01-10 11:14:08.520450000 -0500
+@@ -7,7 +7,7 @@
+ .\" as published by the Free Software Foundation; either version
+ .\" 2 of the License, or (at your option) any later version.
+ .\"
+-.TH REQUEST-KEY 8 "17 Nov 2005" Linux "Linux Key Management Utilities"
++.TH REQUEST-KEY 8 "15 Nov 2011" Linux "Linux Key Management Utilities"
+ .SH NAME
+ request-key - Handle key instantiation callback requests from the kernel
+ .SH SYNOPSIS
+@@ -25,5 +25,10 @@ All errors will be logged to the syslog.
+ /etc/request-key.conf
+ .ul 0
+ Instantiation handler configuration file.
++.P
++.ul
++/etc/request-key.d/<keytype>.conf
++.ul 0
++Keytype specific configuration file.
+ .SH SEE ALSO
+ \fBkeyctl\fR(1), \fBrequest-key.conf\fR(5)
+diff -up keyutils-1.4/request-key.conf.5.orig keyutils-1.4/request-key.conf.5
+--- keyutils-1.4/request-key.conf.5.orig	2010-02-26 07:16:53.000000000 -0500
++++ keyutils-1.4/request-key.conf.5	2012-01-10 11:14:08.530450000 -0500
+@@ -7,17 +7,22 @@
+ .\" as published by the Free Software Foundation; either version
+ .\" 2 of the License, or (at your option) any later version.
+ .\"
+-.TH REQUEST-KEY.CONF 5 "11 July 2005" Linux "Linux Key Management Utilities"
++.TH REQUEST-KEY.CONF 5 "15 November 2011" Linux "Linux Key Management Utilities"
+ .SH NAME
+ request-key.conf - Instantiation handler configuration file
+ .SH DESCRIPTION
+ .P
+-This file is used by the /sbin/request-key program to determine which program
+-it should run to instantiate a key.
+-.P
+-request-key works scans through the file a line at a time until it finds a
+-match, which it will then use. If it doesn't find a match, it'll return an
+-error and the kernel will automatically negate the key.
++This file and its associated key-type specific variants are used by the
++/sbin/request-key program to determine which program it should run to
++instantiate a key.
++.P
++request-key looks first in /etc/request-key.d/ for a file of the key type name
++plus ".conf" that it can use.  If that is not found, it will fall back to
++/etc/request-key.conf.
++.P
++request-key works scans through the chosen file one line at a time until it
++finds a match, which it will then use. If it doesn't find a match, it'll return
++an error and the kernel will automatically negate the key.
+ .P
+ Any blank line or line beginning with a hash mark '#' is considered to be a
+ comment and ignored.
+@@ -128,5 +133,9 @@ the payload.
+ .ul
+ /etc/request-key.conf
+ .ul 0
++.br
++.ul
++/etc/request-key.d/<keytype>.conf
++.ul 0
+ .SH SEE ALSO
+ \fBkeyctl\fR(1), \fBrequest-key.conf\fR(5)
+diff -up keyutils-1.4/request-key.c.orig keyutils-1.4/request-key.c
+--- keyutils-1.4/request-key.c.orig	2010-02-26 15:31:05.000000000 -0500
++++ keyutils-1.4/request-key.c	2012-01-10 11:14:08.541450000 -0500
+@@ -40,6 +40,7 @@ static char *xgid;
+ static char *xthread_keyring;
+ static char *xprocess_keyring;
+ static char *xsession_keyring;
++static char conffile[256];
+ static int confline;
+ static int norecurse;
+ 
+@@ -115,6 +116,9 @@ static void error(const char *fmt, ...)
+ 	exit(1);
+ }
+ 
++#define file_error(FMT, ...)  error("%s: "FMT, conffile, ## __VA_ARGS__)
++#define line_error(FMT, ...)  error("%s:%d: "FMT, conffile, confline, ## __VA_ARGS__)
++
+ static void oops(int x)
+ {
+ 	error("Died on signal %d", x);
+@@ -256,21 +260,42 @@ static void lookup_action(char *op,
+ 	cilen = strlen(callout_info);
+ 
+ 	/* search the config file for a command to run */
+-	conf = fopen(xdebug < 2 ? "/etc/request-key.conf" : "request-key.conf", "r");
++	if (strlen(ktype) <= sizeof(conffile) - 30) {
++		if (xdebug < 2)
++			snprintf(conffile, sizeof(conffile) - 1,
++				 "/etc/request-key.d/%s.conf", ktype);
++		else
++			snprintf(conffile, sizeof(conffile) - 1,
++				 "request-key.d/%s.conf", ktype);
++		conf = fopen(conffile, "r");
++		if (conf)
++			goto opened_conf_file;
++		if (errno != ENOENT)
++			error("Cannot open %s: %m\n", conffile);
++	}
++
++	if (xdebug < 2)
++		snprintf(conffile, sizeof(conffile) - 1, "/etc/request-key.conf");
++	else
++		snprintf(conffile, sizeof(conffile) - 1, "request-key.conf");
++	conf = fopen(conffile, "r");
+ 	if (!conf)
+-		error("Cannot open /etc/request-key.conf: %m\n");
++		error("Cannot open %s: %m\n", conffile);
++
++opened_conf_file:
++	debug("Opened config file '%s'\n", conffile);
+ 
+ 	for (confline = 1;; confline++) {
+ 		/* read the file line-by-line */
+ 		if (!fgets(buf, sizeof(buf), conf)) {
+ 			if (feof(conf))
+ 				error("Cannot find command to construct key %d\n", key);
+-			error("Error reading /etc/request-key.conf\n");
++			file_error("error %m\n");
+ 		}
+ 
+ 		len = strlen(buf);
+ 		if (len >= sizeof(buf) - 2)
+-			error("/etc/request-key.conf:%d: Line too long\n", confline);
++			line_error("Line too long\n");
+ 
+ 		/* ignore blank lines and comments */
+ 		if (len == 1 || buf[0] == '#' || isspace(buf[0]))
+@@ -339,7 +364,7 @@ static void lookup_action(char *op,
+ 
+ 		p++;
+ 
+-		debug("Line %d matches\n", confline);
++		debug("%s:%d: Line matches\n", conffile, confline);
+ 
+ 		/* we've got an action */
+ 		while (isspace(*p)) p++;
+@@ -351,10 +376,10 @@ static void lookup_action(char *op,
+ 		execute_program(op, key, ktype, kdesc, callout_info, p);
+ 	}
+ 
+-	error("/etc/request-key.conf: No matching action\n");
++	file_error("No matching action\n");
+ 
+ syntax_error:
+-	error("/etc/request-key.conf:%d: Syntax error\n", confline);
++	line_error("Syntax error\n");
+ 
+ } /* end lookup_action() */
+ 
+@@ -451,7 +476,7 @@ static void execute_program(char *op,
+ 	prog = p = cmdline;
+ 	while (*p && !isspace(*p)) p++;
+ //	if (!*p)
+-//		error("/etc/request-key.conf:%d: No command path\n", confline);
++//		line_error("No command path\n");
+ //	*p++ = 0;
+ 	if (*p)
+ 		*p++ = 0;
+@@ -465,7 +490,7 @@ static void execute_program(char *op,
+ 			break;
+ 
+ 		if (argc >= 254)
+-			error("/etc/request-key.conf:%d: Too many arguments\n", confline);
++			line_error("Too many arguments\n");
+ 		argv[argc] = q = p;
+ 
+ 		while (*p && !isspace(*p)) p++;
+@@ -483,7 +508,7 @@ static void execute_program(char *op,
+ 		/* it's a macro */
+ 		q++;
+ 		if (!*q)
+-			error("/etc/request-key.conf:%d: Missing macro name\n", confline);
++			line_error("Missing macro name\n");
+ 
+ 		if (*q == '%') {
+ 			/* it's actually an anti-macro escape "%%..." -> "%..." */
+@@ -505,7 +530,7 @@ static void execute_program(char *op,
+ 			case 'P': argv[argc] = xprocess_keyring;	continue;
+ 			case 'S': argv[argc] = xsession_keyring;	continue;
+ 			default:
+-				error("/etc/request-key.conf:%d: Unsupported macro\n", confline);
++				line_error("Unsupported macro\n");
+ 			}
+ 		}
+ 
+@@ -520,50 +545,40 @@ static void execute_program(char *op,
+ 			q++;
+ 			ksdesc = strchr(q, ':');
+ 			if (!ksdesc)
+-				error("/etc/request-key.conf:%d: Keysub macro lacks ':'\n",
+-				      confline);
++				line_error("Keysub macro lacks ':'\n");
+ 			*ksdesc++ = 0;
+ 			end = strchr(ksdesc, '}');
+ 			if (!end)
+-				error("/etc/request-key.conf:%d: Unterminated keysub macro\n",
+-				      confline);
++				line_error("Unterminated keysub macro\n");
+ 
+ 			*end++ = 0;
+ 			if (*end)
+-				error("/etc/request-key.conf:%d:"
+-				      " Keysub macro has trailing rubbish\n",
+-				      confline);
++				line_error("Keysub macro has trailing rubbish\n");
+ 
+ 			debug("Keysub: %s key \"%s\"\n", q, ksdesc);
+ 
+ 			if (!q[0])
+-				error("/etc/request-key.conf:%d: Keysub type empty\n", confline);
++				line_error("Keysub type empty\n");
+ 
+ 			if (!ksdesc[0])
+-				error("/etc/request-key.conf:%d: Keysub description empty\n",
+-				      confline);
++				line_error("Keysub description empty\n");
+ 
+ 			/* look up the key in the requestor's keyrings, but fail immediately if the
+ 			 * key is not found rather than invoking /sbin/request-key again
+ 			 */
+ 			keysub = request_key(q, ksdesc, NULL, 0);
+ 			if (keysub < 0)
+-				error("/etc/request-key.conf:%d:"
+-				      " Keysub key not found: %m\n",
+-				      confline);
++				line_error("Keysub key not found: %m\n");
+ 
+ 			ret = keyctl_read_alloc(keysub, &tmp);
+ 			if (ret < 0)
+-				error("/etc/request-key.conf:%d:"
+-				      " Can't read keysub %d data: %m\n",
+-				      confline, keysub);
++				line_error("Can't read keysub %d data: %m\n", keysub);
+ 			subdata = tmp;
+ 
+ 			for (loop = 0; loop < ret; loop++)
+ 				if (!isprint(subdata[loop]))
+-					error("/etc/request-key.conf:%d:"
+-					      " keysub %d data not printable ('%02hhx')\n",
+-					      confline, keysub, subdata[loop]);
++					error("keysub %d data not printable ('%02hhx')\n",
++					      keysub, subdata[loop]);
+ 
+ 			argv[argc] = subdata;
+ 			continue;
+@@ -571,7 +586,7 @@ static void execute_program(char *op,
+ 	}
+ 
+ 	if (argc == 0)
+-		error("/etc/request-key.conf:%d: No arguments\n", confline);
++		line_error("No arguments\n");
+ 
+ 	argv[argc] = NULL;
+ 
+@@ -596,7 +611,7 @@ static void execute_program(char *op,
+ 	/* attempt to execute the command */
+ 	execv(prog, argv);
+ 
+-	error("/etc/request-key.conf:%d: Failed to execute '%s': %m\n", confline, prog);
++	line_error("Failed to execute '%s': %m\n", prog);
+ 
+ } /* end execute_program() */
+ 
+@@ -640,7 +655,7 @@ static void pipe_to_program(char *op,
+ 		close(epi[1]);
+ 
+ 		execv(prog, argv);
+-		error("/etc/request-key.conf:%d: Failed to execute '%s': %m\n", confline, prog);
++		line_error("Failed to execute '%s': %m\n", prog);
+ 	}
+ 
+ 	/* parent process */
