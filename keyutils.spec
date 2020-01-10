@@ -11,7 +11,7 @@
 Summary: Linux Key Management Utilities
 Name: keyutils
 Version: %{version}
-Release: 1%{?buildid}%{?dist}
+Release: 3%{?buildid}%{?dist}
 License: GPLv2+ and LGPLv2+
 Group: System Environment/Base
 ExclusiveOS: Linux
@@ -95,6 +95,12 @@ rm -rf $RPM_BUILD_ROOT
 %{_mandir}/man3/*
 
 %changelog
+* Fri Jan 24 2014 Daniel Mach <dmach@redhat.com> - 1.5.8-3
+- Mass rebuild 2014-01-24
+
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1.5.8-2
+- Mass rebuild 2013-12-27
+
 * Fri Oct 4 2013 David Howells <dhowells@redhat.com> - 1.5.8-1
 - New lib symbols should go in a new library minor version [BZ 1014739].
 
